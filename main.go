@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 	"net/http"
 
@@ -21,13 +20,13 @@ type Person struct {
 
 func main() {
 	router := gin.Default()
-	router.GET("/person/:person_id", getByPersonId)
+	router.GET("/person/:person_id/info", getByPersonId)
 	router.POST("/person/create", CreatePerson)
 
 	router.Run("localhost:8080")
 }
 func connectdatabase() *sql.DB {
-	db, err := sql.Open("mysql", "username:password@localhost/cetec?multiStatements=true")
+	db, err := sql.Open("mysql", "username:password@localhost/cetec")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -78,12 +77,40 @@ func CreatePerson(c *gin.Context) {
 	db := connectdatabase()
 	defer db.Close()
 
-	sqlquery := fmt.Sprintf("INSERT INTO person(name) values (?);INSERT INTO phone(number) values (?);INSERT INTO address(  city , state , street1 , street2 , zip_code ) values (?,?,?,?,?);")
-	_, err := db.Exec(sqlquery, &createdperson.NAME, &createdperson.PHONENUMBER, &createdperson.CITY, &createdperson.STATE, &createdperson.STREET1, &createdperson.STREET2, &createdperson.ZIPCODE)
+	sqlquery := "INSERT INTO person(name) values (?);"
+	res, err := db.Exec(sqlquery, createdperson.NAME)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Insert in person  table failed"})
+		return
+	}
+	personeid, err := res.LastInsertId()
+	if err != nil {
+		panic(err.Error())
+	}
+	sqlquery = "INSERT INTO phone( person_id,number) values (?,?);"
+	_, err = db.Exec(sqlquery, personeid, createdperson.PHONENUMBER)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Insert in phone table failed"})
+		return
+	}
+
+	sqlquery = "INSERT INTO address(city , state , street1 , street2 ,zip_code) values (?,?,?,?,?);"
+	res, err = db.Exec(sqlquery, createdperson.CITY, createdperson.STATE, createdperson.STREET1, createdperson.STREET2, createdperson.ZIPCODE)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Insert in address table failed"})
+		return
+	}
+	addressid, err := res.LastInsertId()
 	if err != nil {
 		panic(err.Error())
 	}
 
+	sqlquery = "INSERT INTO address_join( person_id,address_id) values (?,?);"
+	_, err = db.Exec(sqlquery, personeid, addressid)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Insert in address_join table failed"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"data": createdperson})
 
 }
